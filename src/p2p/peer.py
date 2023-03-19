@@ -16,3 +16,17 @@ class Peer:
             port=dict_["port"]
         )
         return obj
+
+    def __eq__(self, other):
+        if not isinstance(other, Peer):
+            return NotImplemented
+        return self.host == other.host and \
+               self.port == other.port
+
+    def __ne__(self, other):
+        if not isinstance(other, Peer):
+            return NotImplemented
+        return not self.__eq__(other)
+
+    def __hash__(self):
+        return hash((self.port, self.host))

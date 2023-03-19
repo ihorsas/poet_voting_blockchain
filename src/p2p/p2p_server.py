@@ -2,7 +2,6 @@ import json
 import logging
 import socket
 import threading
-import pickle
 
 from src.block import Block
 from src.blockchain import Blockchain
@@ -19,7 +18,7 @@ class P2PServer:
     def __init__(self, host, port, blockchain):
         self.host = host
         self.port = port
-        self.p2p_node = Node(blockchain, set())
+        self.p2p_node = Node(blockchain, list())
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.bind((self.host, self.port))
         self.server_socket.listen(1)
@@ -27,7 +26,7 @@ class P2PServer:
 
     def start(self):
         logging.info("Starting node...")
-        # self.broadcast_myself()  # Send peer info to other nodes upon starting up
+        self.broadcast_myself()  # Send peer info to other nodes upon starting up
         while True:
             try:
                 conn, addr = self.server_socket.accept()
@@ -160,7 +159,7 @@ class P2PServer:
     def connect_to_peer(self, host, port):
         peer = Peer(host, port)
         if peer not in self.p2p_node.peers:
-            self.p2p_node.peers.add(peer)
+            self.p2p_node.peers.append(peer)
             self.send_message(peer, {'type': MessageTypes.NEW_PEER, 'peer': Peer(self.host, self.port).to_dict()})
             self.sync()
 

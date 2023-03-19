@@ -1,3 +1,4 @@
+import random
 import threading
 
 import rsa
@@ -34,7 +35,9 @@ if __name__ == "__main__":
     # node2.connect_to_peer('localhost', 5000)
 
     # Wait for PoET consensus to mine a block
-    new_block = blockchain1.mine_block()
+    wait_time = random.randint(5, 10)  # Random wait time between 5 to 10 seconds
+    new_block = blockchain1.create_block(wait_time)
+    blockchain2.add_transaction(Transaction(public_key2, "Candidate C"), private_key2)
     node1.send_block(new_block)
 
     print(f"Blockchain on the first node: {blockchain1.to_dict()}")

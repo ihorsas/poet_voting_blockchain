@@ -2,7 +2,6 @@ from src.block import Block
 from src.blockchain import Blockchain
 from src.transaction import Transaction
 
-
 class Node:
     def __init__(self, blockchain: Blockchain, peers):
         self.blockchain = blockchain
@@ -24,13 +23,8 @@ class Node:
     def add_block(self, block: Block):
         if self.blockchain.is_valid_block(block, self.blockchain.chain[-1]):
             self.blockchain.add_block(block)
+            self.update_transactions(block)
             return True
-
-    def mine_block(self):
-        if not self.blockchain.pending_transactions:
-            return None
-        block = self.blockchain.mine_block()
-        return block
 
     def sync_blockchain(self, blockchain: Blockchain):
         if len(blockchain.chain) > len(self.blockchain.chain):
@@ -40,10 +34,7 @@ class Node:
                 if tx not in self.blockchain.pending_transactions:
                     self.blockchain.add_transaction(tx)
 
-    def broadcast(self, message_type, message):
-        for peer in self.peers:
-            self.send_message(peer, message_type, message)
-
-    def send_message(self, peer, message_type, message):
-        # TODO: Implement sending of message to peer
-        pass
+    def update_transactions(self, block):
+        for tx in block.transactions:
+            if tx in self.blockchain.pending_transactions:
+                self.blockchain.pending_transactions.remove(tx)

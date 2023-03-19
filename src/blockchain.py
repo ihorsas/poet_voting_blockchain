@@ -25,9 +25,8 @@ class Blockchain:
                 self.pending_transactions.append(transaction)
                 print(f"Transactions after adding {transaction.candidate} {[tx.to_dict() for tx in self.pending_transactions]}")
 
-    def mine_block(self):
+    def create_block(self, wait_time):
         previous_block = self.chain[-1]
-        wait_time = random.randint(5, 10)  # Random wait time between 5 to 10 seconds
         print(f"Miner will wait for {wait_time} seconds before mining...")
         time.sleep(wait_time)  # Wait for the random time before mining
         start_time = time.time()  # Start the timer

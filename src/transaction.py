@@ -49,15 +49,3 @@ class Transaction:
     def __hash__(self):
         return hash((self.voter_key, self.candidate, self.timestamp, self.signature))
 
-    # def __hash__(self):
-    #     str_dict = json.dumps(self.to_dict(), sort_keys=True)
-    #     hash_of_dict = hash(str_dict)
-    #     # print(f"asking for hash. Here it is for {self.to_dict()}: {hash_of_dict}")
-    #     return hash_of_dict
-    #
-    # def __eq__(self, other):
-    #     return self.__hash__ == other.__hash__
-    #
-    # def __ne__(self, other):
-    #     return self.__hash__ != other.__hash__
-    #
