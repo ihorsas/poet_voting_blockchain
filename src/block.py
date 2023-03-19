@@ -43,22 +43,3 @@ class Block:
             timestamp=dict_['timestamp'],
             hash=dict_['hash']
         )
-
-    # def to_dict(self):
-    #     return {
-    #         'timestamp': self.timestamp,
-    #         'transactions': [tx.to_dict() for tx in self.transactions],
-    #         'wait_time': self.wait_time,
-    #         'previous_hash': self.previous_hash,
-    #         'hash': self.hash,
-    #     }
-    #
-    # @classmethod
-    # def from_dict(cls, block_dict: dict):
-    #     return cls(
-    #         timestamp=block_dict['timestamp'],
-    #         transactions=block_dict['transactions'],
-    #         previous_hash=block_dict['previous_hash'],
-    #         wait_time=block_dict['wait_time'],
-    #         hash=block_dict['hash']
-    #     )
