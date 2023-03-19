@@ -4,8 +4,8 @@ from threading import Lock
 
 import rsa
 
-from src.block import Block
-from src.transaction import Transaction
+from src.blockchain.block import Block
+from src.blockchain.transaction import Transaction
 
 
 class Blockchain:
