@@ -1,6 +1,6 @@
-from src.block import Block
-from src.blockchain import Blockchain
-from src.transaction import Transaction
+from src.blockchain.block import Block
+from src.blockchain.blockchain import Blockchain
+from src.blockchain.transaction import Transaction
 
 class Node:
     def __init__(self, blockchain: Blockchain, peers):

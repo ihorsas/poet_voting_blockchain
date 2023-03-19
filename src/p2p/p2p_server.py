@@ -3,12 +3,12 @@ import logging
 import socket
 import threading
 
-from src.block import Block
-from src.blockchain import Blockchain
+from src.blockchain.block import Block
+from src.blockchain.blockchain import Blockchain
 from src.p2p.message import MessageTypes
 from src.p2p.node import Node
 from src.p2p.peer import Peer
-from src.transaction import Transaction
+from src.blockchain.transaction import Transaction
 
 logging.basicConfig(level=logging.DEBUG)
 

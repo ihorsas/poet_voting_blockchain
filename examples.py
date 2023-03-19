@@ -2,9 +2,8 @@ import json
 import rsa
 
 # Generate a public/private key pair for the voter
-from src.block import Block
-from src.blockchain import Blockchain
-from src.transaction import Transaction
+from src.blockchain.blockchain import Blockchain
+from src.blockchain.transaction import Transaction
 
 (public_key, private_key) = rsa.newkeys(512)
 

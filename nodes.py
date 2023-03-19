@@ -3,9 +3,9 @@ import threading
 
 import rsa
 
-from src.blockchain import Blockchain
+from src.blockchain.blockchain import Blockchain
 from src.p2p.p2p_server import P2PServer
-from src.transaction import Transaction
+from src.blockchain.transaction import Transaction
 
 if __name__ == "__main__":
     blockchain1 = Blockchain()
