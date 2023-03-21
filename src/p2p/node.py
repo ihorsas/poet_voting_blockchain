@@ -17,10 +17,10 @@ class Node:
 
     def add_transaction(self, transaction: Transaction):
         if transaction not in self.blockchain.pending_transactions:
-            self.blockchain.add_transaction(transaction)
-            return True
-        else:
-            return False
+            result, status = self.blockchain.add_transaction(transaction)
+            if result and status == Status.NEW_BLOCK:
+                return True
+        return False
 
     def add_block(self, block: Block):
         if self.blockchain.is_valid_block(block, self.blockchain.chain[-1]):

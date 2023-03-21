@@ -15,17 +15,20 @@ class Blockchain:
         self.chain = [self.create_genesis_block()]
         self.pending_transactions = list()
         self.validators = []
-        self.register_validator(Validator(1))
-        self.register_validator(Validator(2))
+        self.register_validator(Validator("init_validator"))
         self.lock = Lock()
 
     def create_genesis_block(self):
         return Block([], "0", 0)
 
     def register_validator(self, validator):
+        for v in self.validators:
+            if v.address == validator.address:
+                return False, 0
         self.validators.append(validator)
         if validator.wait_time is None:
             validator.set_wait_time()
+        return True, validator.wait_time
 
     def remove_validator(self, validator):
         self.validators.remove(validator)

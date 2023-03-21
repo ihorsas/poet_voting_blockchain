@@ -150,6 +150,11 @@ class P2PServer:
                    'transactions': [tx.to_dict() for tx in self.p2p_node.blockchain.pending_transactions]}
         self.send_message(peer, message)
 
+    def broadcast_pending_transactions(self):
+        message = {'type': MessageTypes.PENDING_TRANSACTIONS,
+                   'transactions': [tx.to_dict() for tx in self.p2p_node.blockchain.pending_transactions]}
+        self.broadcast(message)
+
     def send_block(self, block):
         message = {'type': MessageTypes.NEW_BLOCK,
                    'block': Block.to_dict(block)}
@@ -167,6 +172,8 @@ class P2PServer:
             self.p2p_node.peers.append(peer)
             self.send_message(peer, {'type': MessageTypes.NEW_PEER, 'peer': Peer(self.host, self.port).to_dict()})
             self.sync()
+            return True
+        return False
 
     def sync_with_peer(self, peer):
         self.send_blockchain(peer)

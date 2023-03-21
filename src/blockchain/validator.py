@@ -1,10 +1,12 @@
-import threading
-import time
 import random
+import threading
+
+from src.blockchain.block import Block
+
 
 class Validator:
-    def __init__(self, id):
-        self.id = id
+    def __init__(self, address):
+        self.address = address
         self.wait_time = None
         self.wait_timer = None
         self.block_to_add = None
@@ -32,4 +34,20 @@ class Validator:
             self.start_wait_timer()
 
     def __repr__(self):
-        return f"Validator {self.id}"
+        return f"Validator {self.address}"
+
+    def to_dict(self):
+        return {
+            "address": self.address,
+            "wait_time": self.wait_time,
+            "block_to_add": self.block_to_add,
+            "validated_blocks": [block.to_dict() for block in self.validated_blocks],
+        }
+
+    @classmethod
+    def from_dict(cls, dict_):
+        obj = cls(dict_["address"])
+        obj.validated_blocks = [Block.from_dict(block) for block in dict_["chain"]]
+        obj.wait_time = dict_["wait_time"]
+        obj.block_to_add = dict_["block_to_add"]
+        return obj
