@@ -33,7 +33,7 @@ class P2PServer:
                 logging.info(f"Accepted connection from {addr}")
                 self.handle_connection(conn)
             except Exception as e:
-                logging.warning(f"Error occurred: {e}")
+                logging.exception(e)
             # threading.Thread(target=self.handle_connection, args=(conn,)).start()
 
     def receive_all(self, conn, length):
@@ -79,7 +79,8 @@ class P2PServer:
                     self.broadcast(message)
             elif message['type'] == MessageTypes.NEW_PEER:
                 peer = Peer.from_dict(message['peer'])
-                self.p2p_node.add_peer(peer)
+                if peer not in self.p2p_node.peers:
+                    self.p2p_node.add_peer(peer)
                 # self.broadcast_peers()
                 # self.sync()
             elif message['type'] == MessageTypes.GET_BLOCKCHAIN:
@@ -96,8 +97,8 @@ class P2PServer:
                     self.p2p_node.add_transaction(tx)
             elif message['type'] == MessageTypes.BLOCKCHAIN:
                 blockchain = Blockchain.from_dict(message['blockchain'])
-                self.p2p_node.sync_blockchain(blockchain)
-                # self.sync()
+                if self.p2p_node.sync_blockchain(blockchain):
+                    self.broadcast_blockchain()
             elif message['type'] == MessageTypes.SYNC:
                 pass
                 # self.sync_with_peer(curr_peer)
@@ -140,6 +141,10 @@ class P2PServer:
         message = {'type': MessageTypes.BLOCKCHAIN, 'blockchain': self.p2p_node.blockchain.to_dict()}
         self.send_message(peer, message)
 
+    def broadcast_blockchain(self):
+        message = {'type': MessageTypes.BLOCKCHAIN, 'blockchain': self.p2p_node.blockchain.to_dict()}
+        self.broadcast(message)
+
     def send_pending_transactions(self, peer):
         message = {'type': MessageTypes.PENDING_TRANSACTIONS,
                    'transactions': [tx.to_dict() for tx in self.p2p_node.blockchain.pending_transactions]}
@@ -154,7 +159,7 @@ class P2PServer:
         logging.info(f"Syncing node with peers {[peer.to_dict() for peer in self.p2p_node.peers]}")
         for peer in self.p2p_node.peers:
             self.send_message(peer, {'type': MessageTypes.GET_BLOCKCHAIN, 'address': Peer(self.host, self.port).to_dict()})
-            self.send_message(peer, {'type': MessageTypes.GET_PENDING_TRANSACTIONS, 'address': Peer(self.host, self.port).to_dict()})
+            # self.send_message(peer, {'type': MessageTypes.GET_PENDING_TRANSACTIONS, 'address': Peer(self.host, self.port).to_dict()})
 
     def connect_to_peer(self, host, port):
         peer = Peer(host, port)

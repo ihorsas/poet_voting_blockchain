@@ -1,6 +1,8 @@
 from src.blockchain.block import Block
 from src.blockchain.blockchain import Blockchain
+from src.blockchain.status import Status
 from src.blockchain.transaction import Transaction
+
 
 class Node:
     def __init__(self, blockchain: Blockchain, peers):
@@ -8,7 +10,7 @@ class Node:
         self.peers = peers
 
     def add_peer(self, peer):
-        self.peers.add(peer)
+        self.peers.append(peer)
 
     def remove_peer(self, peer):
         self.peers.remove(peer)
@@ -29,10 +31,15 @@ class Node:
     def sync_blockchain(self, blockchain: Blockchain):
         if len(blockchain.chain) > len(self.blockchain.chain):
             self.blockchain.chain = blockchain.chain
-        elif len(blockchain.chain) == len(self.blockchain.chain):
+            self.blockchain.pending_transactions = [tx for tx in self.blockchain.pending_transactions if
+                                                    tx not in blockchain.chain[-1].transactions]
+        if len(blockchain.chain) == len(self.blockchain.chain):
             for tx in blockchain.pending_transactions:
                 if tx not in self.blockchain.pending_transactions:
-                    self.blockchain.add_transaction(tx)
+                    result, status = self.blockchain.add_transaction(tx)
+                    if result and status == Status.NEW_BLOCK:
+                        return True
+        return False
 
     def update_transactions(self, block):
         for tx in block.transactions:

@@ -5,17 +5,49 @@ from threading import Lock
 import rsa
 
 from src.blockchain.block import Block
+from src.blockchain.status import Status
 from src.blockchain.transaction import Transaction
+from src.blockchain.validator import Validator
 
 
 class Blockchain:
     def __init__(self):
         self.chain = [self.create_genesis_block()]
         self.pending_transactions = list()
+        self.validators = []
+        self.register_validator(Validator(1))
+        self.register_validator(Validator(2))
         self.lock = Lock()
 
     def create_genesis_block(self):
         return Block([], "0", 0)
+
+    def register_validator(self, validator):
+        self.validators.append(validator)
+        if validator.wait_time is None:
+            validator.set_wait_time()
+
+    def remove_validator(self, validator):
+        self.validators.remove(validator)
+
+    def add_block(self, block):
+        elapsed_times = [v.wait_time for v in self.validators]
+        min_elapsed_time = min(elapsed_times)
+        min_elapsed_time_idx = elapsed_times.index(min_elapsed_time)
+        validator = self.validators[min_elapsed_time_idx]
+        if block in validator.validated_blocks:
+            if self.is_valid_block(block, self.last_block):
+                self.lock.acquire()
+                try:
+                    if self.is_valid_block(block, self.last_block):  # Check again after acquiring lock
+                        self.chain.append(block)
+                        for v in self.validators:
+                            v.stop_wait_timer()
+                            v.set_wait_time()
+                        return True
+                finally:
+                    self.lock.release()
+        return False
 
     def add_transaction(self, transaction, private_key=None):
         if private_key is not None:
@@ -23,27 +55,21 @@ class Blockchain:
         if transaction.signature is not None:
             if transaction not in self.pending_transactions:
                 self.pending_transactions.append(transaction)
-                print(f"Transactions after adding {transaction.candidate} {[tx.to_dict() for tx in self.pending_transactions]}")
+            if self.add_block_if_needed():
+                return True, Status.NEW_BLOCK
+            return True, Status.NEW_TRANSACTION
+        return False, Status.IGNORED
 
-    def create_block(self, wait_time):
-        previous_block = self.chain[-1]
-        print(f"Miner will wait for {wait_time} seconds before mining...")
-        time.sleep(wait_time)  # Wait for the random time before mining
-        start_time = time.time()  # Start the timer
-        new_block = Block(self.pending_transactions, self.chain[-1].hash, wait_time)
-        if self.is_valid_block(new_block, previous_block):
-            self.lock.acquire()
-            try:
-                if self.is_valid_block(new_block, previous_block):  # Check again after acquiring lock
-                    self.chain.append(new_block)
-                    self.pending_transactions = []
-                    print(f"Mined new block in {round(time.time() - start_time, 2)} seconds.")
-                    return new_block
-            finally:
-                self.lock.release()
-        else:
-            print("Mined block is invalid. Discarding...")
-            return None
+    def add_block_if_needed(self):
+        if len(self.pending_transactions) >= 5:
+            block = Block(self.pending_transactions, self.last_block.hash)
+            for v in self.validators:
+                v.validate_block(block)
+            while not self.add_block(block):
+                pass
+            self.pending_transactions = []
+            return True
+        return False
 
     @staticmethod
     def is_valid_block(block, previous_block):
@@ -71,7 +97,7 @@ class Blockchain:
         # merge existing blockchain with received from broadcast
         pass
 
-    def add_block(self, block):
+    def add_existing_block(self, block):
         self.chain.append(block)
         # add received block ahead of the existing blockchain
         pass
@@ -94,3 +120,7 @@ class Blockchain:
         new_chain.chain = self.chain.copy()
         new_chain.pending_transactions = self.pending_transactions.copy()
         return new_chain
+
+    @property
+    def last_block(self):
+        return self.chain[-1]
