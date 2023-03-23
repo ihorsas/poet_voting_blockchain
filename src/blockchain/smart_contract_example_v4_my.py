@@ -197,6 +197,7 @@ blockchain.add_transaction(tx5)
 
 blockchain.finish_voting(contract.name)
 
+print(len(blockchain.contracts))
 # Get results from smart contract
 results = blockchain.get_results(contract.name)
 

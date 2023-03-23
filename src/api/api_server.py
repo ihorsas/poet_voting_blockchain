@@ -98,6 +98,7 @@ class ApiServer:
 
         # Return the wait time as a response
         if result:
+            self.p2p_server.broadcast_contracts()
             return jsonify({"result": "Contract successfully deployed"}), 201
         else:
             return jsonify({"result": "Contract already exist"}), 204
@@ -117,6 +118,7 @@ class ApiServer:
 
         # Return the wait time as a response
         if result:
+            self.p2p_server.broadcast_candidates()
             return jsonify({"result": "Candidate successfully added to contract"}), 201
         else:
             return jsonify({"result": "Candidate already exists in contract"}), 204

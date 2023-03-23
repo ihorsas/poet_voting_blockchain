@@ -1,3 +1,8 @@
+import json
+
+import rsa
+
+
 class State:
     NOT_STARTED = "not_started"
     FINISHED = "finished"
@@ -49,3 +54,35 @@ class VotingSmartContract:
 
     def finish_voting(self):
         self.state = State.FINISHED
+
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "votes": {voter_key: self.votes[voter_key].save_pkcs1().hex() for voter_key in self.votes},
+            "candidates": self.candidates,
+            "state": self.state
+        }
+
+    @classmethod
+    def from_dict(cls, dict_):
+        obj = cls(dict_['name'])
+        obj.state = dict_['state']
+        obj.votes = {voter_key: rsa.PublicKey.load_pkcs1(bytes.fromhex(dict_['votes'][voter_key])) for voter_key in
+                     dict_['votes']}
+        obj.candidates = dict_['candidates']
+        return obj
+
+    def __eq__(self, other):
+        if not isinstance(other, VotingSmartContract):
+            return NotImplemented
+
+        return self.name == other.name and self.votes == other.votes and \
+               self.state == other.state and self.candidates == other.candidates
+
+    def __ne__(self, other):
+        if not isinstance(other, VotingSmartContract):
+            return NotImplemented
+        return not self.__eq__(other)
+
+    def __hash__(self):
+        return hash((json.dumps(self.votes),json.dumps(self.candidates), self.name, self.state))

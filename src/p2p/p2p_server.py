@@ -5,6 +5,7 @@ import threading
 
 from src.blockchain.block import Block
 from src.blockchain.blockchain import Blockchain
+from src.blockchain.smart_contract import VotingSmartContract
 from src.p2p.message import MessageTypes
 from src.p2p.node import Node
 from src.p2p.peer import Peer
@@ -83,6 +84,11 @@ class P2PServer:
                     self.p2p_node.add_peer(peer)
                 # self.broadcast_peers()
                 # self.sync()
+            elif message['type'] == MessageTypes.NEW_CONTRACT:
+                contract = VotingSmartContract.from_dict(message['contract'])
+                if self.p2p_node.add_contract(contract):
+                    logging.info(f"Sending contract {message}")
+                    self.broadcast(message)
             elif message['type'] == MessageTypes.GET_BLOCKCHAIN:
                 # pass
                 peer = Peer.from_dict(message['address'])
@@ -91,6 +97,16 @@ class P2PServer:
                 # pass
                 peer = Peer.from_dict(message['address'])
                 self.send_pending_transactions(peer)
+            elif message['type'] == MessageTypes.CONTRACTS:
+                contracts_dict = message['contracts']
+                contracts = {name: VotingSmartContract.from_dict(contracts_dict[name]) for name in contracts_dict}
+                for name in contracts:
+                    self.p2p_node.add_contract(contracts[name])
+            elif message['type'] == MessageTypes.CANDIDATES:
+                candidates = message['candidates']
+                for contract_name in candidates:
+                    for candidate in candidates[contract_name]:
+                        self.p2p_node.add_candidate(contract_name, candidate)
             elif message['type'] == MessageTypes.PENDING_TRANSACTIONS:
                 for tx_dict in message['transactions']:
                     tx = Transaction.from_dict(tx_dict)
@@ -155,9 +171,27 @@ class P2PServer:
                    'transactions': [tx.to_dict() for tx in self.p2p_node.blockchain.pending_transactions]}
         self.broadcast(message)
 
+    def broadcast_contracts(self):
+        contracts = self.p2p_node.blockchain.contracts
+        message = {'type': MessageTypes.CONTRACTS,
+                   'contracts': {name: contracts[name].to_dict() for name in contracts}}
+        self.broadcast(message)
+
+    def broadcast_candidates(self):
+        contracts = self.p2p_node.blockchain.contracts
+        candidates = {name: list(contracts[name].candidates.keys()) for name in contracts}
+        message = {'type': MessageTypes.CANDIDATES,
+                   'candidates': candidates}
+        self.broadcast(message)
+
     def send_block(self, block):
         message = {'type': MessageTypes.NEW_BLOCK,
                    'block': Block.to_dict(block)}
+        self.broadcast(message)
+
+    def send_contract(self, contract):
+        message = {'type': MessageTypes.NEW_CONTRACT,
+                   'contract': VotingSmartContract.to_dict(contract)}
         self.broadcast(message)
 
     def sync(self):

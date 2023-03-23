@@ -101,6 +101,9 @@ class Blockchain:
     def add_existing_block(self, block):
         self.chain.append(block)
 
+    def add_existing_contract(self, contract):
+        self.contracts[contract.name] = contract
+
     def deploy_contract(self, contract):
         if contract in self.contracts:
             return False
