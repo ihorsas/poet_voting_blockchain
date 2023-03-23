@@ -1,5 +1,4 @@
-import random
-import time
+import logging
 from threading import Lock
 
 import rsa
@@ -9,6 +8,7 @@ from src.blockchain.status import Status
 from src.blockchain.transaction import Transaction
 from src.blockchain.validator import Validator
 
+logging.basicConfig(level=logging.DEBUG)
 
 class Blockchain:
     def __init__(self):
@@ -16,6 +16,7 @@ class Blockchain:
         self.pending_transactions = list()
         self.validators = []
         self.register_validator(Validator("init_validator"))
+        self.contracts = {}
         self.lock = Lock()
 
     def create_genesis_block(self):
@@ -55,7 +56,7 @@ class Blockchain:
     def add_transaction(self, transaction, private_key=None):
         if private_key is not None:
             transaction.sign(private_key)
-        if transaction.signature is not None:
+        if self.is_valid_transaction(transaction):
             if transaction not in self.pending_transactions:
                 self.pending_transactions.append(transaction)
             if self.add_block_if_needed():
@@ -64,12 +65,13 @@ class Blockchain:
         return False, Status.IGNORED
 
     def add_block_if_needed(self):
-        if len(self.pending_transactions) >= 5:
+        if len(self.pending_transactions) >= 2:
             block = Block(self.pending_transactions, self.last_block.hash)
             for v in self.validators:
                 v.validate_block(block)
             while not self.add_block(block):
                 pass
+            self.execute_contracts()
             self.pending_transactions = []
             return True
         return False
@@ -96,14 +98,54 @@ class Blockchain:
                 return False
         return True
 
-    def add_blockchain(self, blockchain):
-        # merge existing blockchain with received from broadcast
-        pass
-
     def add_existing_block(self, block):
         self.chain.append(block)
-        # add received block ahead of the existing blockchain
-        pass
+
+    def deploy_contract(self, contract):
+        if contract in self.contracts:
+            return False
+        self.contracts[contract.name] = contract
+        return True
+
+    def execute_contracts(self):
+        for tx in self.pending_transactions:
+            current_contract = self.get_contract_by_name(tx.contract)
+            if current_contract is not None:
+                try:
+                    current_contract.vote(tx.voter_key, tx.candidate)
+                except Exception as e:
+                    logging.exception(e)
+
+    def add_candidate_to_contract(self, contract_name, candidate):
+        try:
+            self.contracts.get(contract_name).add_candidate(candidate)
+        except Exception as e:
+            logging.exception(e)
+            return False
+        return True
+
+    def get_contract_by_name(self, contract_name):
+        return self.contracts.get(contract_name)
+
+    def start_voting(self, contract_name):
+        self.contracts.get(contract_name).start_voting()
+
+    def finish_voting(self, contract_name):
+        self.contracts.get(contract_name).finish_voting()
+
+    def get_results(self, contract_name):
+        try:
+            return self.contracts.get(contract_name).get_results()
+        except Exception as e:
+            logging.exception(e)
+        return []
+
+    def get_winner(self, contract_name):
+        try:
+            return self.contracts.get(contract_name).get_winner()
+        except Exception as e:
+            logging.exception(e)
+        return []
 
     def to_dict(self):
         return {
@@ -127,3 +169,10 @@ class Blockchain:
     @property
     def last_block(self):
         return self.chain[-1]
+
+    def is_valid_transaction(self, transaction):
+        contract = self.get_contract_by_name(transaction.contract)
+        pending_votes = [tx.voter_key for tx in self.pending_transactions]
+
+        return transaction.signature is not None and contract.is_candidate_exist(transaction.candidate) and \
+               (not contract.is_voter_key_exist(transaction.voter_key)) and transaction.voter_key not in pending_votes

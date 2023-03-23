@@ -8,6 +8,7 @@ from src.blockchain.blockchain import Blockchain
 from src.blockchain.status import Status
 from src.blockchain.transaction import Transaction
 from src.blockchain.validator import Validator
+from src.blockchain.smart_contract import VotingSmartContract
 from src.p2p.p2p_server import P2PServer
 
 logging.basicConfig(level=logging.DEBUG)
@@ -30,6 +31,9 @@ class ApiServer:
         self.app.add_url_rule('/peers', 'get_nodes', self.get_peers, methods=['GET'])
         self.app.add_url_rule('/peers/new', 'connect_to_peer', self.connect_to_peer, methods=['POST'])
         self.app.add_url_rule('/sync', 'sync_with_peers', self.sync_with_peers, methods=['GET'])
+        self.app.add_url_rule('/contracts/new', 'create_contract', self.new_contract, methods=['POST'])
+        self.app.add_url_rule('/contracts/candidate', 'add_candidate_to_contract', self.add_candidate_to_contract, methods=['POST'])
+        self.app.add_url_rule('/contracts', 'get_contracts', self.get_contracts, methods=['GET'])
 
         # Define a lambda function to wrap self.app.run
         run_server = lambda port: self.app.run(port=port)
@@ -41,16 +45,16 @@ class ApiServer:
         thread1.start()
         thread2.start()
 
-        self.app.run(port=api_port)
-
     def new_transaction(self):
         # Get the candidate name from the request data
         data = request.get_json()
-        if 'candidate' not in data:
-            return 'Missing candidate', 400
+        required_fields = ['contract', 'candidate']
+        if not all(field in data for field in required_fields):
+            return 'Missing fields', 400
 
+        contract_name = request.json['contract']
         candidate_name = request.json['candidate']
-        tx = Transaction(self.public_key, candidate_name)
+        tx = Transaction(self.public_key, candidate_name, contract_name)
         # Create a new transaction and add it to the blockchain
         result, status = self.blockchain.add_transaction(tx, self.private_key)
         logging.info(f"Executed add transaction. Result: {result}, status: {status}")
@@ -81,6 +85,41 @@ class ApiServer:
             return jsonify({"result": "Validator successfully registered", "wait_time": wait_time}), 201
         else:
             return jsonify({"result": "Validator already exist"}), 204
+
+    def new_contract(self):
+        data = request.get_json()
+        if 'name' not in data:
+            return 'Missing name', 400
+        name = request.json['name']
+
+        # Add the validator to the set of validators
+        result = self.blockchain.deploy_contract(VotingSmartContract(name))
+        logging.info(f"Executed deploy contract. Result: {result}")
+
+        # Return the wait time as a response
+        if result:
+            return jsonify({"result": "Contract successfully deployed"}), 201
+        else:
+            return jsonify({"result": "Contract already exist"}), 204
+
+    def add_candidate_to_contract(self):
+        data = request.get_json()
+        required_fields = ['contract', 'candidate']
+        if not all(field in data for field in required_fields):
+            return 'Missing fields', 400
+
+        contract = request.json['contract']
+        candidate = request.json['candidate']
+
+        # Add the validator to the set of validators
+        result = self.blockchain.add_candidate_to_contract(contract, candidate)
+        logging.info(f"Executed add candidate to contract. Result: {result}")
+
+        # Return the wait time as a response
+        if result:
+            return jsonify({"result": "Candidate successfully added to contract"}), 201
+        else:
+            return jsonify({"result": "Candidate already exists in contract"}), 204
 
     def connect_to_peer(self):
         # Get the validator's public key from the request data
@@ -123,4 +162,8 @@ class ApiServer:
     def get_peers(self):
         peers = [peer.to_dict() for peer in self.p2p_server.p2p_node.peers]
         return peers, 200
+
+    def get_contracts(self):
+        contracts = [contract for contract in self.blockchain.contracts]
+        return contracts, 200
 
