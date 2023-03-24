@@ -107,6 +107,10 @@ class P2PServer:
                 for contract_name in candidates:
                     for candidate in candidates[contract_name]:
                         self.p2p_node.add_candidate(contract_name, candidate)
+            elif message['type'] == MessageTypes.STATES:
+                states = message['states']
+                for contract_name in states:
+                    self.p2p_node.update_state(contract_name, states[contract_name])
             elif message['type'] == MessageTypes.PENDING_TRANSACTIONS:
                 for tx_dict in message['transactions']:
                     tx = Transaction.from_dict(tx_dict)
@@ -182,6 +186,13 @@ class P2PServer:
         candidates = {name: list(contracts[name].candidates.keys()) for name in contracts}
         message = {'type': MessageTypes.CANDIDATES,
                    'candidates': candidates}
+        self.broadcast(message)
+
+    def broadcast_states(self):
+        contracts = self.p2p_node.blockchain.contracts
+        states = {name: contracts[name].state for name in contracts}
+        message = {'type': MessageTypes.STATES,
+                   'states': states}
         self.broadcast(message)
 
     def send_block(self, block):

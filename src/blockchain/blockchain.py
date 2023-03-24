@@ -2,13 +2,16 @@ import logging
 from threading import Lock
 
 import rsa
+from typing import Dict
 
 from src.blockchain.block import Block
+from src.blockchain.smart_contract import VotingSmartContract
 from src.blockchain.status import Status
 from src.blockchain.transaction import Transaction
 from src.blockchain.validator import Validator
 
 logging.basicConfig(level=logging.DEBUG)
+
 
 class Blockchain:
     def __init__(self):
@@ -16,13 +19,13 @@ class Blockchain:
         self.pending_transactions = list()
         self.validators = []
         self.register_validator(Validator("init_validator"))
-        self.contracts = {}
+        self.contracts: Dict[str, VotingSmartContract] = {}
         self.lock = Lock()
 
     def create_genesis_block(self):
         return Block([], "0", 0)
 
-    def register_validator(self, validator):
+    def register_validator(self, validator: Validator):
         for v in self.validators:
             if v.address == validator.address:
                 return False, 0
@@ -31,10 +34,10 @@ class Blockchain:
             validator.set_wait_time()
         return True, validator.wait_time
 
-    def remove_validator(self, validator):
+    def remove_validator(self, validator: Validator):
         self.validators.remove(validator)
 
-    def add_block(self, block):
+    def add_block(self, block: Block):
         elapsed_times = [v.wait_time for v in self.validators]
         min_elapsed_time = min(elapsed_times)
         min_elapsed_time_idx = elapsed_times.index(min_elapsed_time)
@@ -53,7 +56,7 @@ class Blockchain:
                     self.lock.release()
         return False
 
-    def add_transaction(self, transaction, private_key=None):
+    def add_transaction(self, transaction: Transaction, private_key=None):
         if private_key is not None:
             transaction.sign(private_key)
         if self.is_valid_transaction(transaction):
@@ -77,7 +80,7 @@ class Blockchain:
         return False
 
     @staticmethod
-    def is_valid_block(block, previous_block):
+    def is_valid_block(block: Block, previous_block: Block):
         if previous_block.hash != block.previous_hash:
             return False
 
@@ -90,21 +93,21 @@ class Blockchain:
         for tx in block.transactions:
             # Verify the signature of the transaction
             public_key = tx.voter_key
-            message = f"{tx.voter_key.save_pkcs1().hex()}{tx.candidate}{tx.timestamp}".encode()
+            message = f"{tx.voter_key.save_pkcs1().hex()}{tx.candidate}{tx.contract}{tx.timestamp}".encode()
             try:
                 rsa.verify(message, tx.signature, public_key)
             except Exception as e:
-                print(f"Validation failed: {e}")
+                logging.exception(e)
                 return False
         return True
 
-    def add_existing_block(self, block):
+    def add_existing_block(self, block: Block):
         self.chain.append(block)
 
-    def add_existing_contract(self, contract):
+    def add_existing_contract(self, contract: VotingSmartContract):
         self.contracts[contract.name] = contract
 
-    def deploy_contract(self, contract):
+    def deploy_contract(self, contract: VotingSmartContract):
         if contract in self.contracts:
             return False
         self.contracts[contract.name] = contract
@@ -127,25 +130,33 @@ class Blockchain:
             return False
         return True
 
-    def get_contract_by_name(self, contract_name):
+    def get_contract_by_name(self, contract_name) -> VotingSmartContract:
         return self.contracts.get(contract_name)
 
     def start_voting(self, contract_name):
-        self.contracts.get(contract_name).start_voting()
+        if self.get_contract_by_name(contract_name) is not None:
+            self.get_contract_by_name(contract_name).start_voting()
+            return True
+        else:
+            return False
 
     def finish_voting(self, contract_name):
-        self.contracts.get(contract_name).finish_voting()
+        if self.get_contract_by_name(contract_name) is not None:
+            self.get_contract_by_name(contract_name).finish_voting()
+            return True
+        else:
+            return False
 
     def get_results(self, contract_name):
         try:
-            return self.contracts.get(contract_name).get_results()
+            return self.get_contract_by_name(contract_name).get_results()
         except Exception as e:
             logging.exception(e)
         return []
 
     def get_winner(self, contract_name):
         try:
-            return self.contracts.get(contract_name).get_winner()
+            return self.get_contract_by_name(contract_name).get_winner()
         except Exception as e:
             logging.exception(e)
         return []

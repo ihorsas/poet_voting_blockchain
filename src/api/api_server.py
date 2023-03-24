@@ -32,7 +32,9 @@ class ApiServer:
         self.app.add_url_rule('/peers/new', 'connect_to_peer', self.connect_to_peer, methods=['POST'])
         self.app.add_url_rule('/sync', 'sync_with_peers', self.sync_with_peers, methods=['GET'])
         self.app.add_url_rule('/contracts/new', 'create_contract', self.new_contract, methods=['POST'])
-        self.app.add_url_rule('/contracts/candidate', 'add_candidate_to_contract', self.add_candidate_to_contract, methods=['POST'])
+        self.app.add_url_rule('/contract/candidate', 'add_candidate_to_contract', self.add_candidate_to_contract, methods=['PUT'])
+        self.app.add_url_rule('/contract/start', 'start_contract', self.start_contract, methods=['PUT'])
+        self.app.add_url_rule('/contract/finish', 'finish_contract', self.finish_contract, methods=['PUT'])
         self.app.add_url_rule('/contracts', 'get_contracts', self.get_contracts, methods=['GET'])
 
         # Define a lambda function to wrap self.app.run
@@ -112,16 +114,48 @@ class ApiServer:
         contract = request.json['contract']
         candidate = request.json['candidate']
 
-        # Add the validator to the set of validators
         result = self.blockchain.add_candidate_to_contract(contract, candidate)
         logging.info(f"Executed add candidate to contract. Result: {result}")
 
-        # Return the wait time as a response
         if result:
             self.p2p_server.broadcast_candidates()
-            return jsonify({"result": "Candidate successfully added to contract"}), 201
+            return jsonify({"result": "Candidate successfully added to contract"}), 200
         else:
             return jsonify({"result": "Candidate already exists in contract"}), 204
+
+    def start_contract(self):
+        data = request.get_json()
+        required_fields = ['contract']
+        if not all(field in data for field in required_fields):
+            return 'Missing fields', 400
+
+        contract = request.json['contract']
+
+        result = self.blockchain.start_voting(contract)
+        logging.info(f"Executed start voting. Result: {result}")
+
+        if result:
+            self.p2p_server.broadcast_states()
+            return jsonify({"result": "Executed start voting successfully"}), 200
+        else:
+            return jsonify({"result": "Smart contract does not exist in the network"}), 404
+
+    def finish_contract(self):
+        data = request.get_json()
+        required_fields = ['contract']
+        if not all(field in data for field in required_fields):
+            return 'Missing fields', 400
+
+        contract = request.json['contract']
+
+        result = self.blockchain.finish_voting(contract)
+        logging.info(f"Executed finish voting. Result: {result}")
+
+        if result:
+            self.p2p_server.broadcast_states()
+            return jsonify({"result": "Executed finish voting successfully"}), 200
+        else:
+            return jsonify({"result": "Smart contract does not exist in the network"}), 404
 
     def connect_to_peer(self):
         # Get the validator's public key from the request data
