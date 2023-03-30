@@ -1,6 +1,7 @@
 import json
 
 import rsa
+from rsa import PublicKey
 
 
 class State:
@@ -10,24 +11,27 @@ class State:
 
 
 class VotingSmartContract:
-    def __init__(self, unique_name):
+    def __init__(self, unique_name: str):
         self.name = unique_name
         self.votes = {}
         self.candidates = {}
         self.state = State.NOT_STARTED
 
-    def add_candidate(self, candidate):
+    def add_candidate(self, candidate: str):
         if candidate in self.candidates:
             raise Exception(f"{candidate} already exists.")
         self.candidates[candidate] = 0
 
-    def is_candidate_exist(self, candidate):
+    def is_candidate_exist(self, candidate: str) -> bool:
         return candidate in self.candidates
 
-    def is_voter_key_exist(self, voter_key):
+    def is_voter_key_exist(self, voter_key: PublicKey) -> bool:
         return voter_key in self.votes
 
-    def vote(self, voter_key, candidate):
+    def is_voting_in_progress(self) -> bool:
+        return self.state == State.IN_PROGRESS
+
+    def vote(self, voter_key: PublicKey, candidate: str):
         if candidate not in self.candidates:
             raise Exception(f"{candidate} does not exist.")
         if voter_key in self.votes:
@@ -44,7 +48,7 @@ class VotingSmartContract:
             raise Exception("Voting is not finished yet")
         return self.candidates
 
-    def get_winner(self):
+    def get_winner(self) -> str:
         if self.state != State.FINISHED:
             raise Exception("Voting is not finished yet")
         return max(self.candidates, key=self.candidates.get)
@@ -85,4 +89,4 @@ class VotingSmartContract:
         return not self.__eq__(other)
 
     def __hash__(self):
-        return hash((json.dumps(self.votes),json.dumps(self.candidates), self.name, self.state))
+        return hash((json.dumps(self.votes), json.dumps(self.candidates), self.name, self.state))

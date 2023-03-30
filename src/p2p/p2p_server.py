@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.DEBUG)
 HEADER_SIZE = 10
 
 class P2PServer:
-    def __init__(self, host, port, blockchain):
+    def __init__(self, host: int, port: int, blockchain: Blockchain):
         self.host = host
         self.port = port
         self.p2p_node = Node(blockchain, list())

@@ -1,8 +1,8 @@
 import logging
 from threading import Lock
+from typing import Dict
 
 import rsa
-from typing import Dict
 
 from src.blockchain.block import Block
 from src.blockchain.smart_contract import VotingSmartContract
@@ -22,7 +22,7 @@ class Blockchain:
         self.contracts: Dict[str, VotingSmartContract] = {}
         self.lock = Lock()
 
-    def create_genesis_block(self):
+    def create_genesis_block(self) -> Block:
         return Block([], "0", 0)
 
     def register_validator(self, validator: Validator):
@@ -37,7 +37,7 @@ class Blockchain:
     def remove_validator(self, validator: Validator):
         self.validators.remove(validator)
 
-    def add_block(self, block: Block):
+    def add_block(self, block: Block) -> bool:
         elapsed_times = [v.wait_time for v in self.validators]
         min_elapsed_time = min(elapsed_times)
         min_elapsed_time_idx = elapsed_times.index(min_elapsed_time)
@@ -67,7 +67,7 @@ class Blockchain:
             return True, Status.NEW_TRANSACTION
         return False, Status.IGNORED
 
-    def add_block_if_needed(self):
+    def add_block_if_needed(self) -> bool:
         if len(self.pending_transactions) >= 2:
             block = Block(self.pending_transactions, self.last_block.hash)
             for v in self.validators:
@@ -80,7 +80,7 @@ class Blockchain:
         return False
 
     @staticmethod
-    def is_valid_block(block: Block, previous_block: Block):
+    def is_valid_block(block: Block, previous_block: Block) -> bool:
         if previous_block.hash != block.previous_hash:
             return False
 
@@ -107,7 +107,7 @@ class Blockchain:
     def add_existing_contract(self, contract: VotingSmartContract):
         self.contracts[contract.name] = contract
 
-    def deploy_contract(self, contract: VotingSmartContract):
+    def deploy_contract(self, contract: VotingSmartContract) -> bool:
         if contract in self.contracts:
             return False
         self.contracts[contract.name] = contract
@@ -122,7 +122,7 @@ class Blockchain:
                 except Exception as e:
                     logging.exception(e)
 
-    def add_candidate_to_contract(self, contract_name, candidate):
+    def add_candidate_to_contract(self, contract_name: str, candidate: str) -> bool:
         try:
             self.contracts.get(contract_name).add_candidate(candidate)
         except Exception as e:
@@ -133,14 +133,14 @@ class Blockchain:
     def get_contract_by_name(self, contract_name) -> VotingSmartContract:
         return self.contracts.get(contract_name)
 
-    def start_voting(self, contract_name):
+    def start_voting(self, contract_name) -> bool:
         if self.get_contract_by_name(contract_name) is not None:
             self.get_contract_by_name(contract_name).start_voting()
             return True
         else:
             return False
 
-    def finish_voting(self, contract_name):
+    def finish_voting(self, contract_name) -> bool:
         if self.get_contract_by_name(contract_name) is not None:
             self.get_contract_by_name(contract_name).finish_voting()
             return True
@@ -184,9 +184,10 @@ class Blockchain:
     def last_block(self):
         return self.chain[-1]
 
-    def is_valid_transaction(self, transaction):
+    def is_valid_transaction(self, transaction: Transaction) -> bool:
         contract = self.get_contract_by_name(transaction.contract)
         pending_votes = [tx.voter_key for tx in self.pending_transactions]
 
         return transaction.signature is not None and contract.is_candidate_exist(transaction.candidate) and \
-               (not contract.is_voter_key_exist(transaction.voter_key)) and transaction.voter_key not in pending_votes
+               (not contract.is_voter_key_exist(transaction.voter_key)) and transaction.voter_key not in pending_votes \
+               and contract.is_voting_in_progress()

@@ -5,7 +5,7 @@ from src.blockchain.block import Block
 
 
 class Validator:
-    def __init__(self, address):
+    def __init__(self, address: str):
         self.address = address
         self.wait_time = None
         self.wait_timer = None
@@ -28,7 +28,7 @@ class Validator:
             self.validated_blocks.append(self.block_to_add)
             self.block_to_add = None
 
-    def validate_block(self, block):
+    def validate_block(self, block: Block):
         if not self.block_to_add:
             self.block_to_add = block
             self.start_wait_timer()

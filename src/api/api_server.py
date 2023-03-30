@@ -36,6 +36,7 @@ class ApiServer:
         self.app.add_url_rule('/contract/start', 'start_contract', self.start_contract, methods=['PUT'])
         self.app.add_url_rule('/contract/finish', 'finish_contract', self.finish_contract, methods=['PUT'])
         self.app.add_url_rule('/contracts', 'get_contracts', self.get_contracts, methods=['GET'])
+        self.app.add_url_rule('/contract/results', 'get_results', self.get_results, methods=['GET'])
 
         # Define a lambda function to wrap self.app.run
         run_server = lambda port: self.app.run(port=port)
@@ -202,4 +203,15 @@ class ApiServer:
     def get_contracts(self):
         contracts = [contract for contract in self.blockchain.contracts]
         return contracts, 200
+
+    def get_results(self):
+        data = request.get_json()
+        required_fields = ['contract']
+        if not all(field in data for field in required_fields):
+            return 'Missing fields', 400
+
+        contract = request.json['contract']
+
+        results = self.blockchain.get_results(contract)
+        return results, 200
 

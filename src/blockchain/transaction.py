@@ -1,17 +1,19 @@
 import time
 
 import rsa
+from rsa import PublicKey, PrivateKey
 
 
 class Transaction:
-    def __init__(self, voter_key, candidate, contract, timestamp=None, signature=None):
+    def __init__(self, voter_key: PublicKey, candidate: str, contract: str, timestamp: float = None,
+                 signature: bytes = None):
         self.voter_key = voter_key
         self.candidate = candidate
         self.contract = contract
         self.timestamp = time.time() if timestamp is None else timestamp
         self.signature = signature
 
-    def sign(self, private_key):
+    def sign(self, private_key: PrivateKey):
         message = f"{self.voter_key.save_pkcs1().hex()}{self.candidate}{self.contract}{self.timestamp}".encode()
         self.signature = rsa.sign(message, private_key, 'SHA-256')
 
@@ -51,4 +53,3 @@ class Transaction:
 
     def __hash__(self):
         return hash((self.voter_key, self.candidate, self.contract, self.timestamp, self.signature))
-
