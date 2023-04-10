@@ -1,11 +1,24 @@
 import time
 
+from typing import Dict
+
 
 class State:
     NOT_STARTED = "not_started"
     FINISHED = "finished"
     IN_PROGRESS = "in_progress"
 
+class ContractMethods:
+    CREATE = "create"
+    ADD_CANDIDATE = "add_candidate"
+    IS_CANDIDATE_EXIST = "is_candidate_exist"
+    IS_VOTER_KEY_EXIST = "is_voter_key_exist"
+    IS_VOTING_IN_PROGRESS = "is_voting_in_progress"
+    VOTE = "vote"
+    GET_RESULTS = "get_results"
+    GET_WINNER = "get_winner"
+    START_VOTING = "start_voting"
+    FINISH_VOTING = "finish_voting"
 
 class SmartContract:
     def __init__(self, unique_name: str):
@@ -58,24 +71,20 @@ class SmartContract:
 
 
 class Transaction:
-    def __init__(self, voter_key: str, contract, args=None, timestamp: float = None,
+    def __init__(self, voter_key: str, contract_name: str, contract_method: str, args: tuple = None, timestamp: float = None,
                  signature: bytes = None):
         self.voter_key = voter_key
-        self.contract = contract
+        self.contract_name = contract_name
+        self.contract_method = contract_method
         self.args = args
         self.timestamp = time.time() if timestamp is None else timestamp
         self.signature = signature
 
-    def execute_contract(self):
-        if self.args is not None:
-            return self.contract(*self.args)
-        else:
-            return self.contract()
-
     def to_dict(self):
         return {
             "voter_key": self.voter_key,
-            "contract": self.contract,
+            "contract_name": self.contract_name,
+            "contract_method": self.contract_method,
             "args": self.args,
             "timestamp": self.timestamp,
             "signature": self.signature.hex() if self.signature else None
@@ -85,7 +94,8 @@ class Transaction:
     def from_dict(cls, dict_):
         obj = cls(
             voter_key=dict_['voter_key'],
-            contract=dict_["contract"],
+            contract_name=dict_["contract_name"],
+            contract_method=dict_["contract_method"],
             args=dict_["args"],
             timestamp=dict_["timestamp"],
             signature=bytes.fromhex(dict_['signature']) if dict_['signature'] else None
@@ -96,7 +106,8 @@ class Transaction:
         if not isinstance(other, Transaction):
             return NotImplemented
         return self.voter_key == other.voter_key and \
-               self.contract == other.contract and \
+               self.contract_name == other.contract_name and \
+               self.contract_method == other.contract_method and \
                self.args == other.args and \
                self.timestamp == other.timestamp and \
                self.signature == other.signature
@@ -107,10 +118,14 @@ class Transaction:
         return not self.__eq__(other)
 
     def __hash__(self):
-        return hash((self.voter_key, self.contract, tuple(self.args) if self.args else None, self.timestamp, self.signature))
+        return hash((self.voter_key, self.contract_name, self.contract_method, tuple(self.args) if self.args else None,
+                     self.timestamp, self.signature))
 
 
-contract = SmartContract("my voting")
+# contract = SmartContract("my voting")
+
+contracts: Dict[str,SmartContract] = {}
+contract_name = "my voting"
 
 candidate1 = "Biden"
 candidate2 = "Trump"
@@ -118,16 +133,38 @@ pk1 = "Ihor"
 pk2 = "Misha"
 
 txs = []
-txs.append(Transaction(pk1, contract.__init__, ["my voting"]))
-txs.append(Transaction(pk1, contract.start_voting))
-txs.append(Transaction(pk1, contract.add_candidate, [candidate1]))
-txs.append(Transaction(pk1, contract.add_candidate, [candidate2]))
-txs.append(Transaction(pk1, contract.vote, [pk1, candidate1]))
-txs.append(Transaction(pk2, contract.vote, [pk2, candidate1]))
-txs.append(Transaction(pk2, contract.finish_voting))
-txs.append(Transaction(pk2, contract.get_results))
+txs.append(Transaction(pk1, contract_name, ContractMethods.CREATE))
+txs.append(Transaction(pk1, contract_name, ContractMethods.START_VOTING))
+txs.append(Transaction(pk1, contract_name, ContractMethods.ADD_CANDIDATE, [candidate1]))
+txs.append(Transaction(pk1, contract_name, ContractMethods.ADD_CANDIDATE, [candidate2]))
+txs.append(Transaction(pk1, contract_name, ContractMethods.VOTE, [pk1, candidate1]))
+txs.append(Transaction(pk2, contract_name, ContractMethods.VOTE, [pk2, candidate1]))
+txs.append(Transaction(pk2, contract_name, ContractMethods.FINISH_VOTING))
+txs.append(Transaction(pk2, contract_name, ContractMethods.GET_RESULTS))
+
+
+def execute_contract(tx):
+    if tx.contract_method == ContractMethods.CREATE:
+        contract = SmartContract(tx.contract_name)
+        if contract in contracts:
+            return False
+        contracts[contract.name] = contract
+        return contract
+    if tx.contract_method == ContractMethods.START_VOTING:
+        return contracts[tx.contract_name].start_voting()
+    if tx.contract_method == ContractMethods.ADD_CANDIDATE:
+        return contracts[tx.contract_name].add_candidate(*tx.args)
+    if tx.contract_method == ContractMethods.VOTE:
+        return contracts[tx.contract_name].vote(*tx.args)
+    if tx.contract_method == ContractMethods.FINISH_VOTING:
+        return contracts[tx.contract_name].finish_voting()
+    if tx.contract_method == ContractMethods.GET_WINNER:
+        return contracts[tx.contract_name].get_winner()
+    if tx.contract_method == ContractMethods.GET_RESULTS:
+        return contracts[tx.contract_name].get_results()
+
 
 for tx in txs:
-    result = tx.execute_contract()
+    result = execute_contract(tx)
     print(f"Result {result}")
     print(f"Tx {tx.to_dict()}")
