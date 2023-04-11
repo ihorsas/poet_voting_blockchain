@@ -156,7 +156,8 @@ class Blockchain:
     def to_dict(self):
         return {
             "chain": [block.to_dict() for block in self.chain],
-            "pending_transactions": [tx.to_dict() for tx in self.pending_transactions]
+            "pending_transactions": [tx.to_dict() for tx in self.pending_transactions],
+            "contracts": {name: self.contracts[name].to_dict() for name in self.contracts}
         }
 
     @classmethod
@@ -164,6 +165,8 @@ class Blockchain:
         obj = cls()
         obj.chain = [Block.from_dict(block) for block in dict_["chain"]]
         obj.pending_transactions = [Transaction.from_dict(tx) for tx in dict_["pending_transactions"]]
+        contracts_dict = dict_["contracts"]
+        obj.contracts = {name: VotingSmartContract.from_dict(contracts_dict[name]) for name in contracts_dict}
         return obj
 
     def copy(self):

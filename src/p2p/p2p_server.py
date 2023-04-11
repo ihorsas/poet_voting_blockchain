@@ -1,19 +1,19 @@
 import json
 import logging
 import socket
-import threading
 
 from src.blockchain.block import Block
 from src.blockchain.blockchain import Blockchain
 from src.blockchain.smart_contract import VotingSmartContract
+from src.blockchain.transaction import Transaction
 from src.p2p.message import MessageTypes
 from src.p2p.node import Node
 from src.p2p.peer import Peer
-from src.blockchain.transaction import Transaction
 
 logging.basicConfig(level=logging.DEBUG)
 
 HEADER_SIZE = 10
+
 
 class P2PServer:
     def __init__(self, host: int, port: int, blockchain: Blockchain):
@@ -102,15 +102,6 @@ class P2PServer:
                 contracts = {name: VotingSmartContract.from_dict(contracts_dict[name]) for name in contracts_dict}
                 for name in contracts:
                     self.p2p_node.add_contract(contracts[name])
-            elif message['type'] == MessageTypes.CANDIDATES:
-                candidates = message['candidates']
-                for contract_name in candidates:
-                    for candidate in candidates[contract_name]:
-                        self.p2p_node.add_candidate(contract_name, candidate)
-            elif message['type'] == MessageTypes.STATES:
-                states = message['states']
-                for contract_name in states:
-                    self.p2p_node.update_state(contract_name, states[contract_name])
             elif message['type'] == MessageTypes.PENDING_TRANSACTIONS:
                 for tx_dict in message['transactions']:
                     tx = Transaction.from_dict(tx_dict)
@@ -181,20 +172,6 @@ class P2PServer:
                    'contracts': {name: contracts[name].to_dict() for name in contracts}}
         self.broadcast(message)
 
-    def broadcast_candidates(self):
-        contracts = self.p2p_node.blockchain.contracts
-        candidates = {name: list(contracts[name].candidates.keys()) for name in contracts}
-        message = {'type': MessageTypes.CANDIDATES,
-                   'candidates': candidates}
-        self.broadcast(message)
-
-    def broadcast_states(self):
-        contracts = self.p2p_node.blockchain.contracts
-        states = {name: contracts[name].state for name in contracts}
-        message = {'type': MessageTypes.STATES,
-                   'states': states}
-        self.broadcast(message)
-
     def send_block(self, block):
         message = {'type': MessageTypes.NEW_BLOCK,
                    'block': Block.to_dict(block)}
@@ -208,8 +185,8 @@ class P2PServer:
     def sync(self):
         logging.info(f"Syncing node with peers {[peer.to_dict() for peer in self.p2p_node.peers]}")
         for peer in self.p2p_node.peers:
-            self.send_message(peer, {'type': MessageTypes.GET_BLOCKCHAIN, 'address': Peer(self.host, self.port).to_dict()})
-            # self.send_message(peer, {'type': MessageTypes.GET_PENDING_TRANSACTIONS, 'address': Peer(self.host, self.port).to_dict()})
+            self.send_message(peer,
+                              {'type': MessageTypes.GET_BLOCKCHAIN, 'address': Peer(self.host, self.port).to_dict()})
 
     def connect_to_peer(self, host, port):
         peer = Peer(host, port)

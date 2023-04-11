@@ -65,7 +65,7 @@ class VotingSmartContract:
     def to_dict(self):
         return {
             "name": self.name,
-            "votes": {voter_key: self.votes[voter_key].save_pkcs1().hex() for voter_key in self.votes},
+            "votes": {voter_key.save_pkcs1().hex(): self.votes[voter_key] for voter_key in self.votes},
             "candidates": self.candidates,
             "state": self.state
         }
@@ -74,7 +74,7 @@ class VotingSmartContract:
     def from_dict(cls, dict_):
         obj = cls(dict_['name'])
         obj.state = dict_['state']
-        obj.votes = {voter_key: rsa.PublicKey.load_pkcs1(bytes.fromhex(dict_['votes'][voter_key])) for voter_key in
+        obj.votes = {rsa.PublicKey.load_pkcs1(bytes.fromhex(voter_key)): dict_['votes'][voter_key] for voter_key in
                      dict_['votes']}
         obj.candidates = dict_['candidates']
         return obj
