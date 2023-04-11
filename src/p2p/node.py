@@ -1,6 +1,6 @@
 from src.blockchain.block import Block
 from src.blockchain.blockchain import Blockchain
-from src.blockchain.smart_contract import VotingSmartContract, State
+from src.blockchain.smart_contract import VotingSmartContract
 from src.blockchain.status import Status
 from src.blockchain.transaction import Transaction
 
@@ -39,7 +39,7 @@ class Node:
         if len(blockchain.chain) > len(self.blockchain.chain):
             self.blockchain.chain = blockchain.chain
             self.blockchain.pending_transactions = [tx for tx in self.blockchain.pending_transactions if
-                                                    tx not in blockchain.chain[-1].transactions]
+                                                    tx not in blockchain.last_block.transactions]
             self.blockchain.contracts = blockchain.contracts
             result = True
 
@@ -61,13 +61,3 @@ class Node:
             self.blockchain.add_existing_contract(contract)
             return True
         return False
-
-    def add_candidate(self, contract_name, candidate):
-        self.blockchain.add_candidate_to_contract(contract_name, candidate)
-
-    def update_state(self, contract_name, state):
-        contract = self.blockchain.get_contract_by_name(contract_name)
-        if state == State.IN_PROGRESS and contract.state == State.NOT_STARTED:
-            self.blockchain.start_voting(contract_name)
-        elif state == State.FINISHED and contract_name != State.FINISHED:
-            self.blockchain.finish_voting(contract_name)
