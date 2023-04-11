@@ -1,17 +1,18 @@
-import threading
 import logging
+import threading
 
 import rsa
 from flask import Flask, jsonify, request
 
 from src.blockchain.blockchain import Blockchain
+from src.blockchain.contract_methods import ContractMethods
 from src.blockchain.status import Status
 from src.blockchain.transaction import Transaction
 from src.blockchain.validator import Validator
-from src.blockchain.smart_contract import VotingSmartContract
 from src.p2p.p2p_server import P2PServer
 
 logging.basicConfig(level=logging.DEBUG)
+
 
 class ApiServer:
     def __init__(self, api_port, p2p_port):
@@ -23,7 +24,7 @@ class ApiServer:
         self.p2p_server = P2PServer('localhost', p2p_port, self.blockchain)
 
         # Register the endpoints with the app
-        self.app.add_url_rule('/transactions/new', 'add_transaction', self.new_transaction, methods=['POST'])
+        self.app.add_url_rule('/votes/new', 'add_transaction', self.new_vote, methods=['POST'])
         self.app.add_url_rule('/validators/new', 'register_validator', self.new_validator, methods=['POST'])
         self.app.add_url_rule('/transactions', 'get_transaction', self.get_transactions, methods=['GET'])
         self.app.add_url_rule('/validators', 'get_validators', self.get_validators, methods=['GET'])
@@ -32,7 +33,8 @@ class ApiServer:
         self.app.add_url_rule('/peers/new', 'connect_to_peer', self.connect_to_peer, methods=['POST'])
         self.app.add_url_rule('/sync', 'sync_with_peers', self.sync_with_peers, methods=['GET'])
         self.app.add_url_rule('/contracts/new', 'create_contract', self.new_contract, methods=['POST'])
-        self.app.add_url_rule('/contract/candidate', 'add_candidate_to_contract', self.add_candidate_to_contract, methods=['PUT'])
+        self.app.add_url_rule('/contract/candidate', 'add_candidate_to_contract', self.add_candidate_to_contract,
+                              methods=['PUT'])
         self.app.add_url_rule('/contract/start', 'start_contract', self.start_contract, methods=['PUT'])
         self.app.add_url_rule('/contract/finish', 'finish_contract', self.finish_contract, methods=['PUT'])
         self.app.add_url_rule('/contracts', 'get_contracts', self.get_contracts, methods=['GET'])
@@ -48,7 +50,7 @@ class ApiServer:
         thread1.start()
         thread2.start()
 
-    def new_transaction(self):
+    def new_vote(self):
         # Get the candidate name from the request data
         data = request.get_json()
         required_fields = ['contract', 'candidate']
@@ -57,20 +59,18 @@ class ApiServer:
 
         contract_name = request.json['contract']
         candidate_name = request.json['candidate']
-        tx = Transaction(self.public_key, candidate_name, contract_name)
+        tx = Transaction(self.public_key, contract_name, ContractMethods.VOTE, [self.public_key, candidate_name])
         # Create a new transaction and add it to the blockchain
         result, status = self.blockchain.add_transaction(tx, self.private_key)
-        logging.info(f"Executed add transaction. Result: {result}, status: {status}")
+        logging.info(f"Executed vote. Result: {result}, status: {status}")
         if result:
             if status == Status.NEW_BLOCK:
                 self.p2p_server.broadcast_blockchain()
-                return jsonify({'result': "Transaction added and new block created"}), 201
+                return jsonify({'result': "Vote added and new block created"}), 201
             else:
                 self.p2p_server.broadcast_pending_transactions()
-                return jsonify({'result': "Transaction added"}), 201
-
-        # Return a success message
-        return jsonify({"result": "Transaction were not added"}), 204
+                return jsonify({'result': "Vote added"}), 201
+        return jsonify({'result': "Smth went wrong"}), 400
 
     def new_validator(self):
         # Get the validator's public key from the request data
@@ -95,16 +95,18 @@ class ApiServer:
             return 'Missing name', 400
         name = request.json['name']
 
-        # Add the validator to the set of validators
-        result = self.blockchain.deploy_contract(VotingSmartContract(name))
-        logging.info(f"Executed deploy contract. Result: {result}")
+        tx = Transaction(self.public_key, name, ContractMethods.CREATE)
 
-        # Return the wait time as a response
+        result, status = self.blockchain.add_transaction(tx, self.private_key)
+        logging.info(f"Executed add contract. Result: {result}, status: {status}")
         if result:
-            self.p2p_server.broadcast_contracts()
-            return jsonify({"result": "Contract successfully deployed"}), 201
-        else:
-            return jsonify({"result": "Contract already exist"}), 204
+            if status == Status.NEW_BLOCK:
+                self.p2p_server.broadcast_blockchain()
+                return jsonify({'result': "Contract added and new block created"}), 201
+            else:
+                self.p2p_server.broadcast_pending_transactions()
+                return jsonify({'result': "Contract added"}), 201
+        return jsonify({'result': "Smth went wrong"}), 400
 
     def add_candidate_to_contract(self):
         data = request.get_json()
@@ -115,14 +117,18 @@ class ApiServer:
         contract = request.json['contract']
         candidate = request.json['candidate']
 
-        result = self.blockchain.add_candidate_to_contract(contract, candidate)
-        logging.info(f"Executed add candidate to contract. Result: {result}")
+        tx = Transaction(self.public_key, contract, ContractMethods.ADD_CANDIDATE, [candidate])
 
+        result, status = self.blockchain.add_transaction(tx, self.private_key)
+        logging.info(f"Executed add candidate to contract. Result: {result}, status: {status}")
         if result:
-            self.p2p_server.broadcast_candidates()
-            return jsonify({"result": "Candidate successfully added to contract"}), 200
-        else:
-            return jsonify({"result": "Candidate already exists in contract"}), 204
+            if status == Status.NEW_BLOCK:
+                self.p2p_server.broadcast_blockchain()
+                return jsonify({'result': "Candidate added to contract and new block created"}), 201
+            else:
+                self.p2p_server.broadcast_pending_transactions()
+                return jsonify({'result': "Candidate added to contract"}), 201
+        return jsonify({'result': "Smth went wrong"}), 400
 
     def start_contract(self):
         data = request.get_json()
@@ -132,14 +138,18 @@ class ApiServer:
 
         contract = request.json['contract']
 
-        result = self.blockchain.start_voting(contract)
-        logging.info(f"Executed start voting. Result: {result}")
+        tx = Transaction(self.public_key, contract, ContractMethods.START_VOTING)
 
+        result, status = self.blockchain.add_transaction(tx, self.private_key)
+        logging.info(f"Executed start voting. Result: {result}, status: {status}")
         if result:
-            self.p2p_server.broadcast_states()
-            return jsonify({"result": "Executed start voting successfully"}), 200
-        else:
-            return jsonify({"result": "Smart contract does not exist in the network"}), 404
+            if status == Status.NEW_BLOCK:
+                self.p2p_server.broadcast_blockchain()
+                return jsonify({"result": "Executed start voting successfully and new block created"}), 201
+            else:
+                self.p2p_server.broadcast_pending_transactions()
+                return jsonify({'result': "Executed start voting"}), 201
+        return jsonify({'result': "Smth went wrong"}), 400
 
     def finish_contract(self):
         data = request.get_json()
@@ -149,14 +159,18 @@ class ApiServer:
 
         contract = request.json['contract']
 
-        result = self.blockchain.finish_voting(contract)
-        logging.info(f"Executed finish voting. Result: {result}")
+        tx = Transaction(self.public_key, contract, ContractMethods.FINISH_VOTING)
 
+        result, status = self.blockchain.add_transaction(tx, self.private_key)
+        logging.info(f"Executed finish voting. Result: {result}, status: {status}")
         if result:
-            self.p2p_server.broadcast_states()
-            return jsonify({"result": "Executed finish voting successfully"}), 200
-        else:
-            return jsonify({"result": "Smart contract does not exist in the network"}), 404
+            if status == Status.NEW_BLOCK:
+                self.p2p_server.broadcast_blockchain()
+                return jsonify({"result": "Executed finish voting successfully and new block created"}), 201
+            else:
+                self.p2p_server.broadcast_pending_transactions()
+                return jsonify({'result': "Executed finish voting"}), 201
+        return jsonify({'result': "Smth went wrong"}), 400
 
     def connect_to_peer(self):
         # Get the validator's public key from the request data
@@ -214,4 +228,3 @@ class ApiServer:
 
         results = self.blockchain.get_results(contract)
         return results, 200
-

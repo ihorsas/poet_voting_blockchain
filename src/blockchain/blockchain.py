@@ -5,6 +5,7 @@ from typing import Dict
 import rsa
 
 from src.blockchain.block import Block
+from src.blockchain.contract_methods import ContractMethods
 from src.blockchain.smart_contract import VotingSmartContract
 from src.blockchain.status import Status
 from src.blockchain.transaction import Transaction
@@ -68,7 +69,7 @@ class Blockchain:
         return False, Status.IGNORED
 
     def add_block_if_needed(self) -> bool:
-        if len(self.pending_transactions) >= 2:
+        if len(self.pending_transactions) >= 5:
             block = Block(self.pending_transactions, self.last_block.hash)
             for v in self.validators:
                 v.validate_block(block)
@@ -93,7 +94,7 @@ class Blockchain:
         for tx in block.transactions:
             # Verify the signature of the transaction
             public_key = tx.voter_key
-            message = f"{tx.voter_key.save_pkcs1().hex()}{tx.candidate}{tx.contract}{tx.timestamp}".encode()
+            message = f"{tx.voter_key.save_pkcs1().hex()}{tx.contract_name}{tx.contract_method}{tx.args}{tx.timestamp}".encode()
             try:
                 rsa.verify(message, tx.signature, public_key)
             except Exception as e:
@@ -107,45 +108,36 @@ class Blockchain:
     def add_existing_contract(self, contract: VotingSmartContract):
         self.contracts[contract.name] = contract
 
-    def deploy_contract(self, contract: VotingSmartContract) -> bool:
-        if contract in self.contracts:
-            return False
-        self.contracts[contract.name] = contract
-        return True
-
     def execute_contracts(self):
         for tx in self.pending_transactions:
-            current_contract = self.get_contract_by_name(tx.contract)
+            if tx.contract_method == ContractMethods.CREATE:
+                contract = VotingSmartContract(tx.contract_name)
+                if contract in self.contracts:
+                    logging.debug(f"Contract {contract} already exists")
+                    continue
+                self.contracts[contract.name] = contract
+                logging.debug(f"Contract {contract} added to blockchain during block creation")
+            current_contract = self.get_contract_by_name(tx.contract_name)
             if current_contract is not None:
                 try:
-                    current_contract.vote(tx.voter_key, tx.candidate)
+                    if tx.contract_method == ContractMethods.START_VOTING:
+                        current_contract.start_voting()
+                        logging.debug(f"Contract {current_contract.name} started during block creation")
+                    if tx.contract_method == ContractMethods.ADD_CANDIDATE:
+                        current_contract.add_candidate(*tx.args)
+                        logging.debug(
+                            f"Candidate {tx.args} added to contract {current_contract.name} during block creation")
+                    if tx.contract_method == ContractMethods.VOTE:
+                        current_contract.vote(*tx.args)
+                        logging.debug(f"Vote added to contract {current_contract.name} during block creation")
+                    if tx.contract_method == ContractMethods.FINISH_VOTING:
+                        current_contract.finish_voting()
+                        logging.debug(f"Contract {current_contract.name} finished during block creation")
                 except Exception as e:
                     logging.exception(e)
 
-    def add_candidate_to_contract(self, contract_name: str, candidate: str) -> bool:
-        try:
-            self.contracts.get(contract_name).add_candidate(candidate)
-        except Exception as e:
-            logging.exception(e)
-            return False
-        return True
-
     def get_contract_by_name(self, contract_name) -> VotingSmartContract:
         return self.contracts.get(contract_name)
-
-    def start_voting(self, contract_name) -> bool:
-        if self.get_contract_by_name(contract_name) is not None:
-            self.get_contract_by_name(contract_name).start_voting()
-            return True
-        else:
-            return False
-
-    def finish_voting(self, contract_name) -> bool:
-        if self.get_contract_by_name(contract_name) is not None:
-            self.get_contract_by_name(contract_name).finish_voting()
-            return True
-        else:
-            return False
 
     def get_results(self, contract_name):
         try:
@@ -184,10 +176,75 @@ class Blockchain:
     def last_block(self):
         return self.chain[-1]
 
-    def is_valid_transaction(self, transaction: Transaction) -> bool:
-        contract = self.get_contract_by_name(transaction.contract)
-        pending_votes = [tx.voter_key for tx in self.pending_transactions]
+    def is_valid_transaction(self, tx: Transaction) -> bool:
+        try:
+            tx_signed = tx.signature is not None
+            if tx.contract_method == ContractMethods.CREATE:
+                return tx_signed and not self.is_contract_exist(tx.contract_name)
+            if tx.contract_method == ContractMethods.START_VOTING:
+                return tx_signed and self.is_contract_exist(tx.contract_name) and not self.is_contract_started(
+                    tx.contract_name)
+            if tx.contract_method == ContractMethods.ADD_CANDIDATE:
+                return tx_signed and self.is_contract_exist(tx.contract_name) and \
+                       not self.is_contract_started(tx.contract_name) \
+                       and not self.is_candidate_exist(tx.contract_name, tx.args[0])
+            if tx.contract_method == ContractMethods.VOTE:
+                return tx_signed and self.is_contract_exist(tx.contract_name) and \
+                       self.is_contract_started(tx.contract_name) and \
+                       self.is_candidate_exist(tx.contract_name, tx.args[1]) and not self.is_voter_voted_already(
+                    tx.voter_key, tx.contract_name)
+            if tx.contract_method == ContractMethods.FINISH_VOTING:
+                return tx_signed and self.is_contract_exist(tx.contract_name) and self.is_contract_started(
+                    tx.contract_name) and not self.is_contract_finished(tx.contract_name)
+        except Exception as e:
+            logging.exception(e)
+            return False
 
-        return transaction.signature is not None and contract.is_candidate_exist(transaction.candidate) and \
-               (not contract.is_voter_key_exist(transaction.voter_key)) and transaction.voter_key not in pending_votes \
-               and contract.is_voting_in_progress()
+    def is_contract_exist(self, contract_name):
+        pending_contracts = [tx.contract_name for tx in self.pending_transactions if
+                             tx.contract_method == ContractMethods.CREATE]
+        if contract_name in pending_contracts or contract_name in self.contracts:
+            logging.debug(f"Contract {contract_name} exists")
+            return True
+        logging.debug(f"Contract {contract_name} does not exist")
+        return False
+
+    def is_contract_started(self, contract_name):
+        started_pending_contracts = [tx.contract_name for tx in self.pending_transactions if
+                                     tx.contract_method == ContractMethods.START_VOTING]
+        contract = self.get_contract_by_name(contract_name)
+        if contract_name in started_pending_contracts or (contract.is_voting_in_progress() if contract else False):
+            logging.debug(f"Contract {contract_name} is already started")
+            return True
+        logging.debug(f"Contract {contract_name} is not started")
+        return False
+
+    def is_candidate_exist(self, contract_name, candidate):
+        pending_candidates = [tx.args[0] for tx in self.pending_transactions if
+                              tx.contract_method == ContractMethods.ADD_CANDIDATE and tx.contract_name == contract_name]
+        contract = self.get_contract_by_name(contract_name)
+        if candidate in pending_candidates or (contract.is_candidate_exist(candidate) if contract else False):
+            logging.debug(f"Candidate {candidate} is already exist for {contract_name}")
+            return True
+        logging.debug(f"Candidate {candidate} does not exist for {contract_name}")
+        return False
+
+    def is_voter_voted_already(self, voter_key, contract_name):
+        pending_votes = [tx.voter_key for tx in self.pending_transactions if
+                         tx.contract_method == ContractMethods.VOTE and tx.contract_name == contract_name]
+        contract = self.get_contract_by_name(contract_name)
+        if voter_key in pending_votes or (contract.is_voter_key_exist(voter_key) if contract else False):
+            logging.debug(f"Voter {voter_key} is already voted for {contract_name}")
+            return True
+        logging.debug(f"Voter {voter_key} did not vote yet for {contract_name}")
+        return False
+
+    def is_contract_finished(self, contract_name):
+        finished_pending_contracts = [tx.contract_name for tx in self.pending_transactions if
+                                      tx.contract_method == ContractMethods.FINISH_VOTING]
+        contract = self.get_contract_by_name(contract_name)
+        if contract_name in finished_pending_contracts or (contract.is_voting_in_finished() if contract else False):
+            logging.debug(f"Contract {contract_name} is already finished")
+            return True
+        logging.debug(f"Contract {contract_name} is not finished yet")
+        return False

@@ -31,6 +31,9 @@ class VotingSmartContract:
     def is_voting_in_progress(self) -> bool:
         return self.state == State.IN_PROGRESS
 
+    def is_voting_in_finished(self) -> bool:
+        return self.state == State.FINISHED
+
     def vote(self, voter_key: PublicKey, candidate: str):
         if candidate not in self.candidates:
             raise Exception(f"{candidate} does not exist.")
@@ -38,18 +41,18 @@ class VotingSmartContract:
             raise Exception(f"Voter {voter_key} already voted.")
         if self.state == State.NOT_STARTED:
             raise Exception("Error: Voting period has not started yet.")
-        if self.state == State.FINISHED:
+        if self.is_voting_in_finished():
             raise Exception("Error: Voting period has ended.")
         self.votes[voter_key] = candidate
         self.candidates[candidate] += 1
 
     def get_results(self):
-        if self.state != State.FINISHED:
+        if not self.is_voting_in_finished():
             raise Exception("Voting is not finished yet")
         return self.candidates
 
     def get_winner(self) -> str:
-        if self.state != State.FINISHED:
+        if not self.is_voting_in_finished():
             raise Exception("Voting is not finished yet")
         return max(self.candidates, key=self.candidates.get)
 
