@@ -150,6 +150,17 @@ class P2PServer:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             try:
                 s.settimeout(30)
+                # Set the socket option SO_KEEPALIVE to 1 (enabled)
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+
+                # Get the current value of SO_KEEPALIVE option
+                keepalive = s.getsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE)
+
+                # wait untill socket keeps alive
+                while not keepalive:
+                    s.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+                    keepalive = s.getsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE)
+
                 s.connect((peer.host, peer.port))
 
                 # Convert message to bytes
