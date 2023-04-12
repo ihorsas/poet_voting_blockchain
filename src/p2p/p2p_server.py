@@ -1,6 +1,9 @@
 import json
 import logging
 import socket
+import threading
+
+from rsa import PublicKey
 
 from src.blockchain.block import Block
 from src.blockchain.blockchain import Blockchain
@@ -9,6 +12,7 @@ from src.blockchain.transaction import Transaction
 from src.p2p.message import MessageTypes
 from src.p2p.node import Node
 from src.p2p.peer import Peer
+from src.p2p.validator import Validator
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -19,7 +23,7 @@ class P2PServer:
     def __init__(self, host: int, port: int, blockchain: Blockchain):
         self.host = host
         self.port = port
-        self.p2p_node = Node(blockchain, list())
+        self.p2p_node = Node(blockchain, list(), list())
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.bind((self.host, self.port))
         self.server_socket.listen(1)
@@ -32,10 +36,9 @@ class P2PServer:
             try:
                 conn, addr = self.server_socket.accept()
                 logging.info(f"Accepted connection from {addr}")
-                self.handle_connection(conn)
+                threading.Thread(target=self.handle_connection, args=(conn,)).start()
             except Exception as e:
                 logging.exception(e)
-            # threading.Thread(target=self.handle_connection, args=(conn,)).start()
 
     def receive_all(self, conn, length):
         data = b''
@@ -89,6 +92,11 @@ class P2PServer:
                 if self.p2p_node.add_contract(contract):
                     logging.info(f"Sending contract {message}")
                     self.broadcast(message)
+            elif message['type'] == MessageTypes.NEW_VALIDATOR:
+                validator = Validator.from_dict(message['validator'])
+                if self.p2p_node.add_validator(validator):
+                    logging.info(f"Sending validator {validator}")
+                    self.broadcast(message)
             elif message['type'] == MessageTypes.GET_BLOCKCHAIN:
                 # pass
                 peer = Peer.from_dict(message['address'])
@@ -113,6 +121,23 @@ class P2PServer:
             elif message['type'] == MessageTypes.SYNC:
                 pass
                 # self.sync_with_peer(curr_peer)
+            elif message['type'] == MessageTypes.VALIDATE_NEW_BLOCK:
+                block = Block.from_dict(message['block'])
+                if self.p2p_node.validate_block(block):
+                    logging.info(f"Sending block {message}")
+                    self.send_block(block)
+            elif message['type'] == MessageTypes.GENERATE_WAIT_TIME:
+                wait_time = self.p2p_node.generate_wait_time_for_local_validator()
+                address = self.p2p_node.local_validator.address
+                peer = Peer.from_dict(message['address'])
+                self.send_wait_time(peer, wait_time, address)
+            elif message['type'] == MessageTypes.WAIT_TIME:
+                wait_time = message['wait_time']
+                address = Peer.from_dict(message['address'])
+                self.p2p_node.add_wait_time_for_validator(wait_time, address)
+            elif message['type'] == MessageTypes.ADD_ELAPSED_TIME:
+                time = message['time']
+                self.p2p_node.increase_wait_time_for_validator(time)
             else:
                 logging.warning(f"Invalid message type: {message['type']}")
 
@@ -201,3 +226,61 @@ class P2PServer:
         self.send_blockchain(peer)
         self.send_pending_transactions(peer)
         self.broadcast_peers()
+
+    def register_validator(self, public_key: PublicKey):
+        validator = Validator(public_key, Peer(self.host, self.port))
+        if self.p2p_node.register_validator(validator):
+            message = {
+                'type': MessageTypes.NEW_VALIDATOR,
+                'validator': validator.to_dict(),
+            }
+            self.broadcast(message)
+            return True
+        return False
+
+    def start_validating(self):
+        min_elapsed_time = self.init_new_round()
+        while not self.p2p_node.are_all_validators_have_wait_time(min_elapsed_time):
+            pass
+
+        block_to_add = self.p2p_node.blockchain.get_new_block()
+        message = {
+            'type': MessageTypes.VALIDATE_NEW_BLOCK,
+            'block': block_to_add.to_dict(),
+        }
+        for v in self.p2p_node.validators:
+            self.send_message(v.address, message)
+
+    def init_new_round(self):
+        self.generate_wait_times()
+        return self.add_elapsed_time()
+
+    def generate_wait_times(self):
+        message = {
+            'type': MessageTypes.GENERATE_WAIT_TIME,
+            'address': Peer(self.host, self.port).to_dict()
+        }
+        for v in self.p2p_node.validators:
+            self.send_message(v.address, message)
+
+    def send_wait_time(self, peer, wait_time, address: Peer):
+        message = {
+            'type': MessageTypes.WAIT_TIME,
+            'wait_time': wait_time,
+            'address': address.to_dict()
+        }
+        self.send_message(peer, message)
+
+    def add_elapsed_time(self):
+        while not self.p2p_node.are_all_validators_have_wait_time():
+            pass
+
+        elapsed_times = [v.wait_time for v in self.p2p_node.validators]
+        min_elapsed_time = min(elapsed_times)
+        message = {
+            'type': MessageTypes.ADD_ELAPSED_TIME,
+            'time': min_elapsed_time
+        }
+        for v in self.p2p_node.validators:
+            self.send_message(v.address, message)
+        return min_elapsed_time

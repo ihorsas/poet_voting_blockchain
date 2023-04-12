@@ -8,7 +8,6 @@ from src.blockchain.blockchain import Blockchain
 from src.blockchain.contract_methods import ContractMethods
 from src.blockchain.status import Status
 from src.blockchain.transaction import Transaction
-from src.blockchain.validator import Validator
 from src.p2p.p2p_server import P2PServer
 
 logging.basicConfig(level=logging.DEBUG)
@@ -25,7 +24,7 @@ class ApiServer:
 
         # Register the endpoints with the app
         self.app.add_url_rule('/votes/new', 'add_transaction', self.new_vote, methods=['POST'])
-        self.app.add_url_rule('/validators/new', 'register_validator', self.new_validator, methods=['POST'])
+        self.app.add_url_rule('/validators/register', 'register_validator', self.register_validator, methods=['POST'])
         self.app.add_url_rule('/transactions', 'get_transaction', self.get_transactions, methods=['GET'])
         self.app.add_url_rule('/validators', 'get_validators', self.get_validators, methods=['GET'])
         self.app.add_url_rule('/blockchain', 'get_blockchain', self.get_blockchain, methods=['GET'])
@@ -65,27 +64,21 @@ class ApiServer:
         logging.info(f"Executed vote. Result: {result}, status: {status}")
         if result:
             if status == Status.NEW_BLOCK:
-                self.p2p_server.broadcast_blockchain()
+                self.p2p_server.start_validating()
                 return jsonify({'result': "Vote added and new block created"}), 201
             else:
                 self.p2p_server.broadcast_pending_transactions()
                 return jsonify({'result': "Vote added"}), 201
         return jsonify({'result': "Smth went wrong"}), 400
 
-    def new_validator(self):
-        # Get the validator's public key from the request data
-        data = request.get_json()
-        if 'address' not in data:
-            return 'Missing address', 400
-        public_key = request.json['address']
-
+    def register_validator(self):
         # Add the validator to the set of validators
-        result, wait_time = self.blockchain.register_validator(Validator(public_key))
-        logging.info(f"Executed add validator. Result: {result}, wait time: {wait_time}")
+        result = self.p2p_server.register_validator(self.public_key)
+        logging.info(f"Executed add validator. Result: {result}")
 
         # Return the wait time as a response
         if result:
-            return jsonify({"result": "Validator successfully registered", "wait_time": wait_time}), 201
+            return jsonify({"result": "Validator successfully registered"}), 201
         else:
             return jsonify({"result": "Validator already exist"}), 204
 
@@ -101,7 +94,7 @@ class ApiServer:
         logging.info(f"Executed add contract. Result: {result}, status: {status}")
         if result:
             if status == Status.NEW_BLOCK:
-                self.p2p_server.broadcast_blockchain()
+                self.p2p_server.start_validating()
                 return jsonify({'result': "Contract added and new block created"}), 201
             else:
                 self.p2p_server.broadcast_pending_transactions()
@@ -123,7 +116,7 @@ class ApiServer:
         logging.info(f"Executed add candidate to contract. Result: {result}, status: {status}")
         if result:
             if status == Status.NEW_BLOCK:
-                self.p2p_server.broadcast_blockchain()
+                self.p2p_server.start_validating()
                 return jsonify({'result': "Candidate added to contract and new block created"}), 201
             else:
                 self.p2p_server.broadcast_pending_transactions()
@@ -144,7 +137,7 @@ class ApiServer:
         logging.info(f"Executed start voting. Result: {result}, status: {status}")
         if result:
             if status == Status.NEW_BLOCK:
-                self.p2p_server.broadcast_blockchain()
+                self.p2p_server.start_validating()
                 return jsonify({"result": "Executed start voting successfully and new block created"}), 201
             else:
                 self.p2p_server.broadcast_pending_transactions()
@@ -165,7 +158,7 @@ class ApiServer:
         logging.info(f"Executed finish voting. Result: {result}, status: {status}")
         if result:
             if status == Status.NEW_BLOCK:
-                self.p2p_server.broadcast_blockchain()
+                self.p2p_server.start_validating()
                 return jsonify({"result": "Executed finish voting successfully and new block created"}), 201
             else:
                 self.p2p_server.broadcast_pending_transactions()
@@ -204,7 +197,8 @@ class ApiServer:
         return txs, 200
 
     def get_validators(self):
-        validators = [tx.to_dict() for tx in self.blockchain.validators]
+        validators = self.p2p_server.p2p_node.validators
+        validators = [v.to_dict() for v in validators]
         return validators, 200
 
     def get_blockchain(self):
@@ -225,6 +219,5 @@ class ApiServer:
             return 'Missing fields', 400
 
         contract = request.json['contract']
-
         results = self.blockchain.get_results(contract)
         return results, 200

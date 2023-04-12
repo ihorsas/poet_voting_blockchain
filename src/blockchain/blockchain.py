@@ -9,7 +9,7 @@ from src.blockchain.contract_methods import ContractMethods
 from src.blockchain.smart_contract import VotingSmartContract
 from src.blockchain.status import Status
 from src.blockchain.transaction import Transaction
-from src.blockchain.validator import Validator
+from src.p2p.validator import Validator
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -18,40 +18,19 @@ class Blockchain:
     def __init__(self):
         self.chain = [self.create_genesis_block()]
         self.pending_transactions = list()
-        self.validators = []
-        self.register_validator(Validator("init_validator"))
         self.contracts: Dict[str, VotingSmartContract] = {}
         self.lock = Lock()
 
     def create_genesis_block(self) -> Block:
         return Block([], "0", 0)
 
-    def register_validator(self, validator: Validator):
-        for v in self.validators:
-            if v.address == validator.address:
-                return False, 0
-        self.validators.append(validator)
-        if validator.wait_time is None:
-            validator.set_wait_time()
-        return True, validator.wait_time
-
-    def remove_validator(self, validator: Validator):
-        self.validators.remove(validator)
-
-    def add_block(self, block: Block) -> bool:
-        elapsed_times = [v.wait_time for v in self.validators]
-        min_elapsed_time = min(elapsed_times)
-        min_elapsed_time_idx = elapsed_times.index(min_elapsed_time)
-        validator = self.validators[min_elapsed_time_idx]
+    def add_block(self, block: Block, validator: Validator) -> bool:
         if block in validator.validated_blocks:
             if self.is_valid_block(block, self.last_block):
                 self.lock.acquire()
                 try:
                     if self.is_valid_block(block, self.last_block):  # Check again after acquiring lock
                         self.chain.append(block)
-                        for v in self.validators:
-                            v.stop_wait_timer()
-                            v.set_wait_time()
                         return True
                 finally:
                     self.lock.release()
@@ -63,22 +42,18 @@ class Blockchain:
         if self.is_valid_transaction(transaction):
             if transaction not in self.pending_transactions:
                 self.pending_transactions.append(transaction)
-            if self.add_block_if_needed():
+            if self.need_new_block():
                 return True, Status.NEW_BLOCK
             return True, Status.NEW_TRANSACTION
         return False, Status.IGNORED
 
-    def add_block_if_needed(self) -> bool:
+    def need_new_block(self) -> bool:
         if len(self.pending_transactions) >= 5:
-            block = Block(self.pending_transactions, self.last_block.hash)
-            for v in self.validators:
-                v.validate_block(block)
-            while not self.add_block(block):
-                pass
-            self.execute_contracts()
-            self.pending_transactions = []
             return True
         return False
+
+    def get_new_block(self) -> Block:
+        return Block(self.pending_transactions, self.last_block.hash)
 
     @staticmethod
     def is_valid_block(block: Block, previous_block: Block) -> bool:
@@ -103,13 +78,16 @@ class Blockchain:
         return True
 
     def add_existing_block(self, block: Block):
-        self.chain.append(block)
+        if self.is_valid_block(block, self.last_block):
+            self.chain.append(block)
+            return True
+        return False
 
     def add_existing_contract(self, contract: VotingSmartContract):
         self.contracts[contract.name] = contract
 
     def execute_contracts(self):
-        for tx in self.pending_transactions:
+        for tx in self.last_block.transactions:
             if tx.contract_method == ContractMethods.CREATE:
                 contract = VotingSmartContract(tx.contract_name)
                 if contract in self.contracts:

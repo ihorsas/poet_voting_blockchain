@@ -1,14 +1,21 @@
+import logging
+from typing import List
+
 from src.blockchain.block import Block
 from src.blockchain.blockchain import Blockchain
 from src.blockchain.smart_contract import VotingSmartContract
 from src.blockchain.status import Status
 from src.blockchain.transaction import Transaction
+from src.p2p.peer import Peer
+from src.p2p.validator import Validator
 
 
 class Node:
-    def __init__(self, blockchain: Blockchain, peers):
+    def __init__(self, blockchain: Blockchain, peers: List[Peer], validators: List[Validator]):
         self.blockchain = blockchain
         self.peers = peers
+        self.validators = validators
+        self.local_validator: Validator = None
 
     def add_peer(self, peer):
         self.peers.append(peer)
@@ -25,9 +32,11 @@ class Node:
 
     def add_block(self, block: Block):
         if self.blockchain.is_valid_block(block, self.blockchain.chain[-1]):
-            self.blockchain.add_existing_block(block)
-            self.update_transactions(block)
-            return True
+            if self.blockchain.add_existing_block(block):
+                self.blockchain.execute_contracts()
+                self.update_transactions(block)
+                return True
+        logging.info(f"Wasn't able to add block {block.to_dict()} to blockchain")
         return False
 
     def sync_blockchain(self, blockchain: Blockchain):
@@ -61,3 +70,64 @@ class Node:
             self.blockchain.add_existing_contract(contract)
             return True
         return False
+
+    def validate_block(self, block):
+        self.local_validator.validate_block(block)
+        if self.is_blockchain_has_block(block):
+            logging.info(f"Block {block.to_dict()} is already in blockchain")
+            self.stop_wait_timers()
+            return False
+        while not self.blockchain.add_block(block, self.local_validator):
+            if self.is_blockchain_has_block(block):
+                logging.info(f"Block {block.to_dict()} is already in blockchain")
+                self.stop_wait_timers()
+                return False
+        self.stop_wait_timers()
+        self.blockchain.execute_contracts()
+        self.update_transactions(block)
+        return True
+
+    def is_blockchain_has_block(self, block: Block):
+        return self.blockchain.last_block.hash == block.hash
+
+    def register_validator(self, validator: Validator):
+        for v in self.validators:
+            if v.address == validator.address:
+                return False
+        self.local_validator = validator
+        self.validators.append(validator)
+        return True
+
+    def add_validator(self, validator: Validator):
+        for v in self.validators:
+            if v.address == validator.address:
+                return False
+        self.validators.append(validator)
+        return True
+
+    def generate_wait_time_for_local_validator(self):
+        self.local_validator.generate_wait_time()
+        return self.local_validator.wait_time
+
+    def add_wait_time_for_validator(self, wait_time, address):
+        for v in self.validators:
+            if v.address == address:
+                v.set_wait_time(wait_time)
+                return True
+        return False
+
+    def increase_wait_time_for_validator(self, time):
+        for v in self.validators:
+            v.add_seconds_to_wait_time(time)
+
+    def are_all_validators_have_wait_time(self, min_time=0):
+        for v in self.validators:
+            if v.wait_time is None:
+                return False
+            if v.wait_time <= min_time:
+                return False
+        return True
+
+    def stop_wait_timers(self):
+        for v in self.validators:
+            v.stop_wait_timer()
