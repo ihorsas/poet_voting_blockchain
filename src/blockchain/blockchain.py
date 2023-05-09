@@ -229,3 +229,11 @@ class Blockchain:
             return True
         logging.debug(f"Contract {contract_name} is not finished yet")
         return False
+
+    def get_candidates_for_contract(self, contract_name):
+        pending_candidates = [tx.args[0] for tx in self.pending_transactions if
+                              tx.contract_method == ContractMethods.ADD_CANDIDATE and tx.contract_name == contract_name]
+        contract = self.get_contract_by_name(contract_name)
+        if contract is not None:
+            pending_candidates += contract.candidates.keys()
+        return pending_candidates

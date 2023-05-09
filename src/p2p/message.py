@@ -5,8 +5,6 @@ class MessageTypes:
     NEW_CONTRACT = "new_contract"
     NEW_VALIDATOR = "new_validator"
     CONTRACTS = "contracts"
-    CANDIDATES = "candidates"
-    STATES = "states"
     PENDING_TRANSACTIONS = "pending_transactions"
     BLOCKCHAIN = "blockchain"
     GET_BLOCKCHAIN = "get_blockchain"

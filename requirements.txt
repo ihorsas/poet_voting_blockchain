@@ -1,2 +1,5 @@
 flask==2.2.3
+flask-cors==3.0.10
 rsa==4.9
+locust==2.15.1
+urllib3==1.26.6

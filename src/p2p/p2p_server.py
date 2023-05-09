@@ -87,11 +87,6 @@ class P2PServer:
                     self.p2p_node.add_peer(peer)
                 # self.broadcast_peers()
                 # self.sync()
-            elif message['type'] == MessageTypes.NEW_CONTRACT:
-                contract = VotingSmartContract.from_dict(message['contract'])
-                if self.p2p_node.add_contract(contract):
-                    logging.info(f"Sending contract {message}")
-                    self.broadcast(message)
             elif message['type'] == MessageTypes.NEW_VALIDATOR:
                 validator = Validator.from_dict(message['validator'])
                 if self.p2p_node.add_validator(validator):
@@ -105,11 +100,6 @@ class P2PServer:
                 # pass
                 peer = Peer.from_dict(message['address'])
                 self.send_pending_transactions(peer)
-            elif message['type'] == MessageTypes.CONTRACTS:
-                contracts_dict = message['contracts']
-                contracts = {name: VotingSmartContract.from_dict(contracts_dict[name]) for name in contracts_dict}
-                for name in contracts:
-                    self.p2p_node.add_contract(contracts[name])
             elif message['type'] == MessageTypes.PENDING_TRANSACTIONS:
                 for tx_dict in message['transactions']:
                     tx = Transaction.from_dict(tx_dict)

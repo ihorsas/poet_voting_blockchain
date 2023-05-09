@@ -3,6 +3,7 @@ import threading
 
 import rsa
 from flask import Flask, jsonify, request
+from flask_cors import CORS
 
 from src.blockchain.blockchain import Blockchain
 from src.blockchain.contract_methods import ContractMethods
@@ -20,6 +21,7 @@ class ApiServer:
         self.public_key, self.private_key = rsa.newkeys(512)
 
         self.app = Flask(__name__)
+        CORS(self.app)
         self.p2p_server = P2PServer('localhost', p2p_port, self.blockchain)
 
         # Register the endpoints with the app
@@ -34,10 +36,13 @@ class ApiServer:
         self.app.add_url_rule('/contracts/new', 'create_contract', self.new_contract, methods=['POST'])
         self.app.add_url_rule('/contract/candidate', 'add_candidate_to_contract', self.add_candidate_to_contract,
                               methods=['PUT'])
+        self.app.add_url_rule('/contract/candidates', 'get_candidates_for_contract', self.get_candidates_for_contract,
+                              methods=['Get'])
         self.app.add_url_rule('/contract/start', 'start_contract', self.start_contract, methods=['PUT'])
         self.app.add_url_rule('/contract/finish', 'finish_contract', self.finish_contract, methods=['PUT'])
         self.app.add_url_rule('/contracts', 'get_contracts', self.get_contracts, methods=['GET'])
         self.app.add_url_rule('/contract/results', 'get_results', self.get_results, methods=['GET'])
+        self.app.add_url_rule('/key/public', 'get_public_key', self.get_public_key, methods=['GET'])
 
         # Define a lambda function to wrap self.app.run
         run_server = lambda port: self.app.run(port=port)
@@ -122,6 +127,17 @@ class ApiServer:
                 self.p2p_server.broadcast_pending_transactions()
                 return jsonify({'result': "Candidate added to contract"}), 201
         return jsonify({'result': "Smth went wrong"}), 400
+
+    def get_candidates_for_contract(self):
+        data = request.get_json()
+        required_fields = ['contract']
+        if not all(field in data for field in required_fields):
+            return 'Missing fields', 400
+
+        contract_name = request.json['contract']
+        result = self.blockchain.get_candidates_for_contract(contract_name)
+        logging.info(f"Executed get candidates for contract. Result: {result}")
+        return jsonify({'result': result}), 200
 
     def start_contract(self):
         data = request.get_json()
@@ -209,8 +225,10 @@ class ApiServer:
         return peers, 200
 
     def get_contracts(self):
+        pending_contracts = [tx.contract_name for tx in self.blockchain.pending_transactions if
+                             tx.contract_method == ContractMethods.CREATE]
         contracts = [contract for contract in self.blockchain.contracts]
-        return contracts, 200
+        return pending_contracts + contracts, 200
 
     def get_results(self):
         data = request.get_json()
@@ -221,3 +239,6 @@ class ApiServer:
         contract = request.json['contract']
         results = self.blockchain.get_results(contract)
         return results, 200
+
+    def get_public_key(self):
+        return jsonify({"result": self.public_key.save_pkcs1().hex()}), 200
